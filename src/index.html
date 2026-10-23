@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>譜光跟奏台</title>
+<meta name="description" content="五線譜與演奏進度合成的即時視覺，可拍照辨識樂譜。">
+<meta name="theme-color" content="#1F6F8B">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="譜光">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+</style>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<style>
+/* Layout: practice stand — piano-roll ribbon over the live score, keyboard under it, a side rail for photo scan + ABC source */
+:root{
+  --bg:#F3F4F8; --paper:#FFFFFF; --ink:#1A1D2B; --muted:#6B7088; --line:#DADCE6;
+  --accent:#1F6F8B; --accent-ink:#FFFFFF; --hit:#D99A1E; --miss:#C2453B; --done:#1F6F8B;
+  --upcoming:#B9BDCC; --band:rgba(31,111,139,.10);
+  --f-display:"Noto Serif TC","Songti TC",serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11131B; --paper:#191C27; --ink:#E6E8F2; --muted:#9298B0; --line:#2C3042;
+  --accent:#4FB3CF; --accent-ink:#0B1A20; --hit:#F2B640; --miss:#E86A5F; --done:#4FB3CF; --upcoming:#4A4F66; --band:rgba(79,179,207,.12); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11131B; --paper:#191C27; --ink:#E6E8F2; --muted:#9298B0; --line:#2C3042;
+  --accent:#4FB3CF; --accent-ink:#0B1A20; --hit:#F2B640; --miss:#E86A5F; --done:#4FB3CF; --upcoming:#4A4F66; --band:rgba(79,179,207,.12); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+h1{font-family:var(--f-display);font-weight:900;font-size:1.9rem;margin:0;letter-spacing:.02em;text-wrap:balance}
+header p{margin:0;color:var(--muted)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+body.focus header,body.focus .rail{display:none}
+body.focus .layout{grid-template-columns:minmax(0,1fr)}
+body.focus .scorebox{max-height:72vh}
+.stage{display:grid;gap:10px;min-width:0;position:relative}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--paper);color:var(--ink);
+  padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button.sm{padding:4px 10px;font-size:.85rem}
+button:hover,.btn:hover{border-color:var(--accent)}
+button:focus-visible,.btn:focus-within,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button:disabled{opacity:.5;cursor:default}
+.ctl{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.85rem}
+.ctl input[type=range]{width:110px;accent-color:var(--accent)}
+.ctl input[type=number]{width:56px;font:inherit;font-family:var(--f-mono);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
+.practice{padding:8px 10px;border:1px dashed var(--line);border-radius:10px}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-family:var(--f-mono);font-size:.8rem;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--paper);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip b{font-weight:500;color:var(--accent)}
+.chip.live b{color:var(--hit)}
+.meter{width:90px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--accent)}
+.meter i.loud{background:var(--hit)}
+.roll{width:100%;height:110px;display:block;background:var(--paper);border:1px solid var(--line);border-radius:10px}
+.scorebox{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 8px;max-height:62vh;overflow:auto}
+#score{min-height:180px}
+#fx{position:absolute;left:0;top:0;pointer-events:none}
+#score svg path,#score svg text{fill:var(--ink)}
+#score svg .sl-done path{fill:var(--done)}
+#score svg .sl-missed path{fill:var(--miss)}
+#score svg .sl-cur path,#score svg .sl-cur text{fill:var(--hit)}
+#score svg .sl-cur.sl-miss path{fill:var(--miss)}
+#score svg .abcjs-note{cursor:pointer}
+#score svg .sl-label{fill:var(--muted);font-family:var(--f-body);font-weight:500}
+#score svg .sl-label.sl-done{fill:var(--done)}
+#score svg .sl-label.sl-cur{fill:var(--hit);font-weight:700}
+#score svg .sl-label.sl-missed,#score svg .sl-label.sl-cur.sl-miss{fill:var(--miss)}
+.ctl select{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}
+.msg{font-size:.85rem;color:var(--muted);min-height:1.3em}
+.msg.err{color:var(--miss)}
+.tuner{height:6px;border-radius:3px;background:var(--line);position:relative;overflow:hidden}
+.tuner i{position:absolute;top:0;bottom:0;width:4px;left:50%;background:var(--hit);transition:left .08s}
+/* summary */
+.summary{background:var(--paper);border:1px solid var(--accent);border-radius:12px;padding:16px;display:grid;gap:12px}
+.summary h2{margin:0;font-family:var(--f-display);font-size:1.2rem}
+.sgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.sgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sgrid div{display:grid;gap:2px}
+.sgrid span{font-size:.75rem;color:var(--muted);letter-spacing:.06em}
+.sgrid b{font-family:var(--f-mono);font-size:1.4rem;font-weight:500;font-variant-numeric:tabular-nums}
+.bars{display:flex;align-items:flex-end;gap:3px;height:48px}
+.bars i{flex:1;min-width:3px;background:var(--upcoming);border-radius:2px 2px 0 0}
+.bars i.bad{background:var(--miss)}
+/* keyboard */
+.keys{position:relative;height:120px;user-select:none;touch-action:none;overflow-x:auto}
+.keys-inner{position:relative;height:100%;min-width:560px}
+.key{position:absolute;top:0;border:1px solid var(--line);border-radius:0 0 6px 6px;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;
+  font-family:var(--f-mono);font-size:.65rem;color:var(--muted);padding-bottom:6px}
+.key.w{background:var(--paper);height:100%;z-index:1}
+.key.b{background:var(--ink);height:62%;z-index:2;color:transparent}
+.key.on{background:var(--hit)!important;color:var(--ink)}
+.key.bad{background:var(--miss)!important}
+.key.hint{box-shadow:inset 0 -6px 0 var(--accent)}
+/* rail */
+.rail{display:grid;gap:16px;min-width:0}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px;min-width:0}
+.card h2{font-family:var(--f-display);font-size:1.05rem;margin:0;font-weight:600}
+.card p{margin:0;color:var(--muted);font-size:.85rem}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.btn input{display:none}
+#preview{max-height:180px;object-fit:contain;border-radius:6px;border:1px solid var(--line);background:var(--bg)}
+textarea{width:100%;min-height:200px;font-family:var(--f-mono);font-size:.78rem;line-height:1.5;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--ink);padding:10px;resize:vertical}
+.tag{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lib{display:grid;gap:6px}
+.lib .item{display:flex;gap:6px;align-items:center;min-width:0}
+.lib .item button:first-child{flex:1;min-width:0;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib .empty{font-size:.85rem;color:var(--muted)}
+button.danger{color:var(--miss);border-color:var(--miss)}
+@media (prefers-reduced-motion: reduce){.tuner i{transition:none}}
+.head-actions{display:flex;gap:8px;margin-left:auto}
+.hint{flex-basis:100%;font-size:.85rem}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--paper);color:var(--ink);padding:0;max-width:min(560px,calc(100vw - 32px));width:100%}
+dialog::backdrop{background:rgba(10,12,20,.55)}
+.dlg{display:grid;gap:12px;padding:18px}
+.dlg h2{margin:0;font-family:var(--f-display);font-size:1.15rem}
+.dlg p{margin:0;color:var(--muted);font-size:.85rem}
+.dlg label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+.dlg input,.dlg select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);min-width:0}
+.keyrow{display:flex;gap:8px}.keyrow input{flex:1}
+.dlg .row{justify-content:flex-end}
+#camDlg{max-width:min(900px,calc(100vw - 16px))}
+.viewfinder{position:relative;background:#000;border-radius:10px;overflow:hidden}
+.viewfinder video{display:block;width:100%;max-height:70vh;object-fit:contain}
+.viewfinder i{position:absolute;inset:6%;border:2px dashed rgba(255,255,255,.75);border-radius:8px;pointer-events:none}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>譜光跟奏台</h1>
+    <p>五線譜與演奏進度合成的即時視覺。拍下樂譜辨識，接著彈奏，譜面會跟著你走。</p>
+    <div class="head-actions">
+      <button id="btnInstall" type="button" class="primary" hidden>安裝 App</button>
+      <button id="btnSettings" type="button">設定</button>
+    </div>
+    <p class="hint" id="iosHint" hidden>在 iPhone 上安裝：用 Safari 打開，點「分享」→「加入主畫面」。</p>
+  </header>
+
+  <div class="layout">
+    <section class="stage">
+      <div class="toolbar">
+        <button id="btnPlay" class="primary" type="button">示範播放</button>
+        <button id="btnMic" type="button" aria-pressed="false">麥克風跟奏</button>
+        <button id="btnReset" type="button">回到開頭</button>
+        <button id="btnFocus" type="button" aria-pressed="false">專注模式</button>
+        <label class="ctl" for="labelMode">讀音
+          <select id="labelMode">
+            <option value="solfege">唱名 Do Re Mi</option>
+            <option value="letter">音名 C D E</option>
+            <option value="jianpu">簡譜 1 2 3</option>
+            <option value="off">不顯示</option>
+          </select>
+        </label>
+        <label class="ctl" for="tempo">示範速度 <input id="tempo" type="range" min="40" max="160" value="100"> <span id="tempoVal">100%</span></label>
+      </div>
+
+      <div class="toolbar practice">
+        <button id="btnLoop" class="sm" type="button" aria-pressed="false">段落練習</button>
+        <label class="ctl" for="loopA">第 <input id="loopA" type="number" min="1" value="1"></label>
+        <label class="ctl" for="loopB">到 <input id="loopB" type="number" min="1" value="4"> 小節</label>
+        <button id="btnSetA" class="sm" type="button">起點設為目前</button>
+        <button id="btnSetB" class="sm" type="button">終點設為目前</button>
+        <span class="chip" id="lapChip" hidden>第 <b id="lapN">1</b> 遍</span>
+      </div>
+
+      <div class="toolbar">
+        <div class="stats">
+          <span class="chip">小節 <b id="stMeasure">–</b></span>
+          <span class="chip">進度 <b id="stProg">0 / 0</b></span>
+          <span class="chip">一次彈對 <b id="stAcc">–</b></span>
+          <span class="chip">你的速度 <b id="stBpm">–</b></span>
+          <span class="chip live">聽到 <b id="stPitch">—</b></span>
+        </div>
+      </div>
+
+      <div class="toolbar" id="micRow" hidden>
+        <span class="ctl">音量 <span class="meter"><i id="meter"></i></span></span>
+        <label class="ctl" for="gate">靈敏度 <input id="gate" type="range" min="1" max="10" value="6"></label>
+        <span class="ctl">環境吵雜時調低靈敏度，避免誤判。</span>
+      </div>
+
+      <div class="tuner" aria-hidden="true"><i id="tunerNeedle"></i></div>
+      <canvas class="roll" id="roll" aria-label="鋼琴捲簾進度"></canvas>
+
+      <div class="summary" id="summary" hidden>
+        <h2 id="sumTitle">練習結果</h2>
+        <div class="sgrid">
+          <div><span>一次彈對</span><b id="sumAcc">–</b></div>
+          <div><span>錯音次數</span><b id="sumMiss">–</b></div>
+          <div><span>用時</span><b id="sumTime">–</b></div>
+          <div><span>平均速度</span><b id="sumBpm">–</b></div>
+        </div>
+        <div>
+          <span class="tag">各小節錯音</span>
+          <div class="bars" id="sumBars"></div>
+        </div>
+        <div class="row">
+          <button id="sumAgain" type="button" class="primary">再來一次</button>
+          <button id="sumDrill" type="button">練最常錯的小節</button>
+          <button id="sumClose" type="button">關閉</button>
+        </div>
+      </div>
+
+      <div class="scorebox" id="scorebox">
+        <div id="score"></div>
+        <canvas id="fx"></canvas>
+      </div>
+      <div class="msg" id="msg">點琴鍵或用電腦鍵盤 A W S E D F T G Y H U J K 彈奏。點譜上任一個音符可以從那裡開始。</div>
+      <div class="keys" id="keys"><div class="keys-inner" id="keysInner"></div></div>
+    </section>
+
+    <aside class="rail">
+      <div class="card">
+        <span class="tag">拍照辨識</span>
+        <h2>把紙本樂譜變成可跟奏的譜</h2>
+        <p>對準一頁樂譜（光線充足、譜面拉平）拍下，Claude 會轉成 ABC 譜並載入，結果會存到「我的樂譜」。約需 30–60 秒，使用你在「設定」填的 API 金鑰。</p>
+        <div class="row">
+          <button id="btnCam" type="button" class="primary">開相機</button>
+          <label class="btn" for="fileIn">選擇圖片<input id="fileIn" type="file" accept="image/*"></label>
+          <button id="btnStop" type="button" hidden>停止</button>
+        </div>
+        <img id="preview" alt="樂譜照片預覽" hidden>
+        <div class="msg" id="omrMsg"></div>
+      </div>
+
+      <div class="card">
+        <span class="tag">我的樂譜</span>
+        <div class="lib" id="lib"></div>
+        <div class="row">
+          <button type="button" data-sample="twinkle" class="sm">範例：小星星</button>
+          <button type="button" data-sample="ode" class="sm">範例：快樂頌</button>
+          <button type="button" data-sample="minuet" class="sm">範例：小步舞曲</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <span class="tag">樂譜原始碼</span>
+        <h2>ABC 譜</h2>
+        <p>辨識結果可在這裡修正，或貼上任何 ABC 譜。</p>
+        <textarea id="abcText" spellcheck="false" aria-label="ABC 譜原始碼"></textarea>
+        <div class="row">
+          <button id="btnApply" type="button" class="primary">套用</button>
+          <button id="btnSave" type="button">存到我的樂譜</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog id="camDlg" aria-label="相機">
+  <div class="dlg">
+    <h2>對準樂譜</h2>
+    <div class="viewfinder"><video id="camVideo" autoplay playsinline muted></video><i></i></div>
+    <p>讓整頁樂譜落在虛線框內，保持手機與紙面平行。</p>
+    <div class="row">
+      <button id="camTorch" type="button" aria-pressed="false" hidden>手電筒</button>
+      <button id="camCancel" type="button">取消</button>
+      <button id="camShot" type="button" class="primary">拍下並辨識</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="setDlg" aria-label="設定">
+  <form class="dlg" id="setForm">
+    <h2>設定</h2>
+    <p>拍照辨識會用你自己的 Anthropic API 金鑰呼叫 Claude，依用量計費。金鑰只存在這支手機的瀏覽器裡，不會傳到 Anthropic 以外的地方。到 console.anthropic.com 的 API Keys 頁面可以建立金鑰。</p>
+    <label for="setKey">API 金鑰
+      <span class="keyrow"><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."><button id="setShow" type="button">顯示</button></span>
+    </label>
+    <label for="setModel">辨識模型<select id="setModel"></select></label>
+    <div class="row">
+      <button id="setCancel" type="button">取消</button>
+      <button type="submit" class="primary">儲存</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>
