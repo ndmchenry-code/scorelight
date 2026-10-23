@@ -2,6 +2,20 @@
 
 五線譜與演奏進度合成的即時視覺。可以安裝到手機主畫面，像一般 App 一樣使用，安裝後離線也能練習（拍照辨識需要連網）。
 
+**網址：https://ndmchenry-code.github.io/scorelight/**
+
+## 更新上線
+
+改完原始碼後：
+
+```bash
+npm run build
+git add -A
+git commit -m "說明這次的修改"
+git push
+npm run deploy    # 把 www/ 推到 gh-pages 分支，約一分鐘後網站更新
+```
+
 ## 功能
 
 - 譜面跟奏：麥克風聽音高、畫面琴鍵或電腦鍵盤（A W S E D F T G Y H U J K）
