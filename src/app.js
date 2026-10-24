@@ -1,5 +1,5 @@
 import ABCJS from "abcjs";
-import { recognizeScore, MODELS } from "./omr.js";
+import { recognizeScore, PROVIDERS } from "./omr.js";
 
 const SAMPLES = {
   twinkle: `X:1
@@ -588,10 +588,18 @@ function renderLib(){
   });
 }
 
-/* ---------- photo → ABC via Claude (your own API key) ---------- */
+/* ---------- photo → ABC via Claude or Gemini (your own API key) ---------- */
+// Claude keeps the original storage keys so keys saved by earlier versions still work.
+const STORE_KEYS = {
+  claude: { key:"scorelight.key", model:"scorelight.model" },
+  gemini: { key:"scorelight.gemini.key", model:"scorelight.gemini.model" }
+};
 const settings = {
-  get key(){ return store.get("scorelight.key") || "" },
-  get model(){ return store.get("scorelight.model") || MODELS[0].id }
+  get provider(){ const p = store.get("scorelight.provider"); return PROVIDERS[p] ? p : "claude" },
+  keyFor(p){ return store.get(STORE_KEYS[p].key) || "" },
+  modelFor(p){ const m = store.get(STORE_KEYS[p].model); return PROVIDERS[p].models.some(x => x.id === m) ? m : PROVIDERS[p].models[0].id },
+  get key(){ return this.keyFor(this.provider) },
+  get model(){ return this.modelFor(this.provider) }
 };
 let omrCtl = null;
 
@@ -608,27 +616,29 @@ async function fileToImage(blob){
 }
 
 const OMR_COPY = {
-  cancelled:"已停止辨識。", no_key:"請先在「設定」貼上你的 Anthropic API 金鑰。", bad_key:"API 金鑰無效，請到「設定」檢查。",
-  forbidden:"這把金鑰沒有使用這個模型的權限。", bad_model:"找不到這個模型，請到「設定」換一個。",
-  rate_limited:"請求太頻繁或達到用量上限，請稍後再試。", billing:"API 帳戶餘額不足，請到 Anthropic Console 儲值。",
+  cancelled:"已停止辨識。", no_key:"請先在「設定」貼上 {name} 的 API 金鑰。", bad_key:"{name} 的 API 金鑰無效，請到「設定」檢查。",
+  forbidden:"這把金鑰沒有使用這個模型的權限，請到「設定」換一個模型。", bad_model:"找不到這個模型，請到「設定」換一個。",
+  rate_limited:"請求太頻繁或達到用量上限（含免費額度），請稍後再試。", billing:"API 帳戶餘額不足，請到 {name} 的帳戶頁面儲值。",
   offline:"連不上網路，辨識需要連線。", refused:"這張圖片無法辨識，請換一張樂譜照片。",
-  too_long:"這頁樂譜太長，請一次拍半頁。", invalid:"辨識結果不完整，請換一張更清楚的照片再試。",
-  bad_request:"圖片或請求有問題，請換一張照片再試。", server:"Claude 服務暫時有問題，請稍後再試。"
+  too_long:"這頁樂譜太長，請一次拍半頁。", invalid:"辨識結果不完整，請換一張更清楚的照片再試，或在設定換一個模型。",
+  bad_request:"圖片或請求有問題，請換一張照片再試。", server:"{name} 服務暫時有問題，請稍後再試。"
 };
+const omrCopy = (code, name) => (OMR_COPY[code] || "辨識失敗，請再試一次。").replaceAll("{name}", name);
 function omrSay(t, err){ $("omrMsg").textContent = t; $("omrMsg").className = err ? "msg err" : "msg" }
 
 async function recognize(image){
   const img = $("preview"); img.src = image.url; img.hidden = false;
-  if(!settings.key){ omrSay(OMR_COPY.no_key, true); openSettings(); return }
+  const provider = settings.provider, name = PROVIDERS[provider].name;
+  if(!settings.key){ omrSay(omrCopy("no_key", name), true); openSettings(); return }
   omrCtl = new AbortController(); $("btnStop").hidden = false;
-  omrSay("辨識中…Claude 正在讀譜（約 30–60 秒）");
+  omrSay(`辨識中…${name} 正在讀譜（約 30–60 秒）`);
   try{
-    const out = await recognizeScore({ apiKey:settings.key, model:settings.model, image, signal:omrCtl.signal });
+    const out = await recognizeScore({ provider, apiKey:settings.key, model:settings.model, image, signal:omrCtl.signal });
     const abc = out.abc.trim();
     loadAbc(abc); saveToLib(abc);
     omrSay(`已辨識「${out.title || titleOf(abc)}」並存到我的樂譜。` + (out.notes ? ` ${out.notes}` : "") + " 有錯可在下方 ABC 修正後按「套用」。");
   }catch(e){
-    omrSay(OMR_COPY[e.code] || "辨識失敗，請再試一次。", e.code !== "cancelled");
+    omrSay(omrCopy(e.code, name), e.code !== "cancelled");
     if(e.code === "bad_key") openSettings();
   }finally{ $("btnStop").hidden = true; omrCtl = null }
 }
@@ -673,19 +683,41 @@ $("camShot").addEventListener("click", () => {
 });
 
 /* settings */
-$("setModel").innerHTML = MODELS.map(m => `<option value="${m.id}">${m.label}</option>`).join("");
+// The dialog edits a draft holding both providers, so switching back and forth keeps what was typed.
+let draft = null;
+$("setProvider").innerHTML = Object.entries(PROVIDERS).map(([id, p]) => `<option value="${id}">${p.label}</option>`).join("");
+function showProvider(p){
+  const info = PROVIDERS[p];
+  draft.current = p; $("setProvider").value = p;
+  $("setModel").innerHTML = info.models.map(m => `<option value="${m.id}">${m.label}</option>`).join("");
+  $("setModel").value = draft.models[p];
+  $("setKey").value = draft.keys[p]; $("setKey").placeholder = info.keyPlaceholder;
+  $("setKey").type = "password"; $("setShow").textContent = "顯示";
+  $("setKeyLabel").textContent = `${info.name} API 金鑰`;
+  $("setHelp").textContent = info.keyHelp;
+}
+function keepDraft(){
+  draft.keys[draft.current] = $("setKey").value.trim(); draft.models[draft.current] = $("setModel").value;
+}
 function openSettings(){
-  $("setKey").value = settings.key; $("setKey").type = "password"; $("setShow").textContent = "顯示";
-  $("setModel").value = settings.model;
+  const ids = Object.keys(PROVIDERS);
+  draft = {
+    keys: Object.fromEntries(ids.map(p => [p, settings.keyFor(p)])),
+    models: Object.fromEntries(ids.map(p => [p, settings.modelFor(p)]))
+  };
+  showProvider(settings.provider);
   if(!$("setDlg").open) $("setDlg").showModal();
 }
+$("setProvider").addEventListener("change", e => { keepDraft(); showProvider(e.target.value) });
 $("btnSettings").addEventListener("click", openSettings);
 $("setForm").addEventListener("submit", e => {
   e.preventDefault();
-  store.set("scorelight.key", $("setKey").value.trim());
-  store.set("scorelight.model", $("setModel").value);
+  keepDraft();
+  for(const p of Object.keys(PROVIDERS)){ store.set(STORE_KEYS[p].key, draft.keys[p]); store.set(STORE_KEYS[p].model, draft.models[p]) }
+  store.set("scorelight.provider", draft.current);
   $("setDlg").close();
-  omrSay(settings.key ? "設定已儲存。" : "已清除 API 金鑰。");
+  const name = PROVIDERS[settings.provider].name;
+  omrSay(settings.key ? `設定已儲存，拍照辨識會使用 ${name}。` : `已儲存。尚未填 ${name} 的 API 金鑰，拍照辨識前請先填入。`);
 });
 $("setCancel").addEventListener("click", () => $("setDlg").close());
 $("setShow").addEventListener("click", e => {

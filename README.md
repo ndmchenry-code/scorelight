@@ -21,17 +21,21 @@ npm run deploy    # 把 www/ 推到 gh-pages 分支，約一分鐘後網站更�
 - 譜面跟奏：麥克風聽音高、畫面琴鍵或電腦鍵盤（A W S E D F T G Y H U J K）
 - 讀音標示：唱名、音名、簡譜（依調號拼寫升降記號）
 - 鋼琴捲簾進度、示範播放、段落練習、錯音標記、練習結果
-- 拍照辨識：即時相機取景（支援手電筒）或選擇圖片，由 Claude 轉成 ABC 譜
+- 拍照辨識：即時相機取景（支援手電筒）或選擇圖片，由 Claude 或 Gemini 轉成 ABC 譜
 - 我的樂譜：辨識結果自動存在這支手機上
 
 ## 拍照辨識的設定
 
-辨識使用你自己的 Anthropic API 金鑰，依用量計費：
+辨識使用你自己的 API 金鑰，可以在 Claude 和 Gemini 之間切換，兩把金鑰分開保存：
 
-1. 到 console.anthropic.com 建立 API 金鑰
-2. 打開 App，按右上角「設定」，貼上金鑰並儲存
+| 服務 | 金鑰從哪裡拿 | 模型選項 |
+|---|---|---|
+| Claude | console.anthropic.com → API Keys（依用量計費） | Claude Opus 5.5（預設）、Claude Sonnet 5.5 |
+| Gemini | aistudio.google.com → Get API key（有免費額度） | Gemini Flash 最新版（預設）、Gemini Pro 最新版 |
 
-金鑰只存在該裝置的瀏覽器儲存空間，App 直接從手機呼叫 Anthropic API，不經過其他伺服器。預設模型為 Claude Opus 5.5，可在設定改成 Claude Sonnet 5.5（較快、較省）。
+打開 App，按右上角「設定」，選「辨識服務」，貼上那個服務的金鑰並儲存。
+
+金鑰只存在該裝置的瀏覽器儲存空間，App 直接從手機呼叫你選的服務，不經過其他伺服器。Gemini 免費方案送出的內容可能被 Google 用來改進產品，詳情見 Google AI Studio 的條款。
 
 ## 開發
 

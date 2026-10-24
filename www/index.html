@@ -234,7 +234,7 @@ dialog::backdrop{background:rgba(10,12,20,.55)}
       <div class="card">
         <span class="tag">拍照辨識</span>
         <h2>把紙本樂譜變成可跟奏的譜</h2>
-        <p>對準一頁樂譜（光線充足、譜面拉平）拍下，Claude 會轉成 ABC 譜並載入，結果會存到「我的樂譜」。約需 30–60 秒，使用你在「設定」填的 API 金鑰。</p>
+        <p>對準一頁樂譜（光線充足、譜面拉平）拍下，AI 會轉成 ABC 譜並載入，結果會存到「我的樂譜」。約需 30–60 秒。在「設定」可以選 Claude 或 Gemini，並填入你的 API 金鑰。</p>
         <div class="row">
           <button id="btnCam" type="button" class="primary">開相機</button>
           <label class="btn" for="fileIn">選擇圖片<input id="fileIn" type="file" accept="image/*"></label>
@@ -284,10 +284,12 @@ dialog::backdrop{background:rgba(10,12,20,.55)}
 <dialog id="setDlg" aria-label="設定">
   <form class="dlg" id="setForm">
     <h2>設定</h2>
-    <p>拍照辨識會用你自己的 Anthropic API 金鑰呼叫 Claude，依用量計費。金鑰只存在這支手機的瀏覽器裡，不會傳到 Anthropic 以外的地方。到 console.anthropic.com 的 API Keys 頁面可以建立金鑰。</p>
-    <label for="setKey">API 金鑰
+    <p>拍照辨識用你自己的 API 金鑰，可選 Claude 或 Gemini，兩把金鑰會分開保存。金鑰只存在這支手機的瀏覽器裡，辨識時直接從手機送到你選的服務。</p>
+    <label for="setProvider">辨識服務<select id="setProvider"></select></label>
+    <label for="setKey"><span id="setKeyLabel">API 金鑰</span>
       <span class="keyrow"><input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."><button id="setShow" type="button">顯示</button></span>
     </label>
+    <p id="setHelp"></p>
     <label for="setModel">辨識模型<select id="setModel"></select></label>
     <div class="row">
       <button id="setCancel" type="button">取消</button>
