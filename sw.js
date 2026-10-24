@@ -1,5 +1,5 @@
 // Offline cache for the app shell. The build stamps VERSION so each release replaces the old cache.
-const VERSION = "mvkpx1ne";
+const VERSION = "mvlnusre";
 const CACHE = `scorelight-${VERSION}`;
 const SHELL = ["./", "index.html", "app.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
